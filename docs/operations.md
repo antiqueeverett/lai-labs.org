@@ -64,6 +64,10 @@ assets. Keep accepted recovery releases. Do not delete them as routine cleanup.
 
 Actions retains Pages artifacts, manifests and browser/live evidence for 90 days, subject to
 GitHub's configured retention cap. Release assets provide recovery beyond that Actions window.
+Before each normal publication, a fresh archive job exercises the same recovery code against
+the retained original launch in a separate directory, without npm installation or rebuilding.
+Its `recovery-evidence` artifact records the verified file count and measured download/extraction
+duration. This proves artifact restoration; it is not a timed live rollback or an availability guarantee.
 Traces, screenshots and JSON results are available from the relevant run, including failed tests.
 There is no independent uptime-monitoring service introduced by this change.
 
@@ -82,6 +86,8 @@ refresh, assets, responsive overflow, browser errors, service/application intera
 intercepted form success/failure, deferred booking and selected visual baselines.
 Chromium desktop/mobile and mobile WebKit are separate projects. Emulation is not proof of
 physical-device behavior. Screenshot comparisons cover named surfaces, not every animation frame.
+The reviewed surfaces are navigation and the open Partner contact dialog with filled test
+fields and the visibly disabled calendar control; route screenshots retain the full pages.
 
 ```powershell
 $env:SITE_URL = 'https://www.lai-labs.org'
@@ -117,14 +123,17 @@ Use the existing workflow's **Run workflow** action on branch `nightly`:
 
 1. Identify the last published accepted release. Verify `acceptance.json`, manifest and archive
    checksum. Preserve evidence from the failed run before recovery.
-2. Read the currently served `/release.json` and record its exact identity as
-   `commit:runId:runAttempt` (full commit, workflow run ID, and attempt, joined by colons).
-3. Set `recovery_release` to the accepted release tag and `expected_current` to that live identity.
+2. Run `node scripts/release.mjs current` from the deployment checkout and retain the printed
+   fingerprint. It binds the live identity to its producer workflow's current attempt/status.
+   This is a public read, requires no new credential, and changes nothing.
+3. Set `recovery_release` to the accepted release tag and `expected_current` to that fingerprint.
 4. Run the workflow. It downloads the retained tar, checks its checksum, rejects unsafe paths,
    links and special files, and verifies the file inventory before uploading it to Pages.
+   Extraction requires an empty real directory and refuses to overwrite existing content.
    This restoration does not install npm dependencies or rebuild application code.
 5. The publication guard refuses recovery if the branch advanced or the live version changed,
-   including a different run/attempt deploying the same commit.
+   including a different run/attempt deploying the same commit or a successful retry that
+   reused the earlier artifact bytes.
    Investigate rather than substituting a newer `expected_current` blindly.
 6. Require the deployment and live byte/HTTP verification to succeed, then inspect the public
    website. Recovery reuses the archived release's earlier browser acceptance; it does not

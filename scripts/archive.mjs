@@ -1,5 +1,6 @@
 // Release assets use the existing workflow token; no administrative API or new credential.
 import { readFile, writeFile, mkdir } from 'node:fs/promises'
+import { lstatSync, readdirSync } from 'node:fs'
 import { execFileSync } from 'node:child_process'
 import { resolve } from 'node:path'
 import { pathToFileURL } from 'node:url'
@@ -45,6 +46,7 @@ async function asset(release, name) {
   return Buffer.from(await (await api(`/releases/assets/${item.id}`, { headers: { Accept: 'application/octet-stream' } })).arrayBuffer())
 }
 export function extractArchive(tar, directory) {
+  if (lstatSync(directory).isSymbolicLink() || !lstatSync(directory).isDirectory() || readdirSync(directory).length) throw new Error('Recovery extraction requires an empty real directory')
   const paths = execFileSync('tar', ['-tf', tar], { encoding: 'utf8' }).trim().split('\n')
   if (paths.some(path => path.startsWith('/') || path.includes('\\') || path.includes(':') || path.split('/').includes('..'))) throw new Error('Unsafe archive path')
   const listing = execFileSync('tar', ['-tvf', tar], { encoding: 'utf8' }).trim().split('\n')
@@ -121,6 +123,7 @@ async function main() {
     await accept(release, manifest, evidence)
     console.log(`Accepted ${release.tag_name}`)
   } else if (command === 'recover') {
+    const started = performance.now()
     const tag = process.env.RECOVERY_RELEASE || ''
     if (!/^production-[a-f0-9]{40}-(?:baseline|\d+-\d+)$/.test(tag)) throw new Error('Invalid recovery release tag')
     const release = await json(`/releases/tags/${tag}`, 'GET')
@@ -136,6 +139,10 @@ async function main() {
     extractArchive('release-bundle.tar', 'dist')
     assertManifest(manifest, await inventory('dist'))
     await writeFile('release-manifest.json', JSON.stringify(manifest, null, 2) + '\n')
+    await writeFile('recovery-verification.json', JSON.stringify({ schema: 1, release: tag,
+      commit: manifest.commit, contentDigest: manifest.contentDigest, checkedAt: new Date().toISOString(),
+      elapsedMs: Math.round(performance.now() - started), filesVerified: Object.keys(manifest.files).length,
+      result: 'pass', method: 'download, checksum, safe extraction, full file inventory; no npm or rebuild' }, null, 2) + '\n')
     console.log(`Restored accepted artifact ${tag} without npm or rebuilding`)
   } else throw new Error(`Unknown archive command: ${command}`)
 }

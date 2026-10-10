@@ -17,4 +17,5 @@ live-verification.json
 release-bundle.tar
 release-bundle.sha256
 acceptance.json
+recovery-verification.json
 .release/

@@ -4,7 +4,7 @@ import { mkdtemp, writeFile, rm, mkdir } from 'node:fs/promises'
 import { join } from 'node:path'
 import { createServer } from 'node:http'
 import { execFileSync } from 'node:child_process'
-import { inventory, assertManifest, assertPromotion, sha256, policy, verifyLive } from '../scripts/release.mjs'
+import { inventory, assertManifest, assertPromotion, currentFingerprint, sha256, policy, verifyLive } from '../scripts/release.mjs'
 import { extractArchive } from '../scripts/archive.mjs'
 
 const scratch = '.release/tests'
@@ -35,6 +35,7 @@ test('retained tar restores identical bytes without dependency installation', as
     execFileSync('tar', ['-cf', join(dir, 'bundle.tar'), '-C', join(dir, 'original'), '.'])
     extractArchive(join(dir, 'bundle.tar'), join(dir, 'restored'))
     assert.deepEqual(await inventory(join(dir, 'restored')), await inventory(join(dir, 'original')))
+    assert.throws(() => extractArchive(join(dir, 'bundle.tar'), join(dir, 'restored')), /empty real directory/)
   } finally { await rm(dir, { recursive: true, force: true }) }
 })
 
@@ -107,9 +108,12 @@ test('stale deployments and recovery over a newer live release are rejected', ()
   const current = 'a'.repeat(40), newer = 'b'.repeat(40)
   assert.doesNotThrow(() => assertPromotion({ mode: 'deploy', requestedCommit: current, branchCommit: current }))
   assert.throws(() => assertPromotion({ mode: 'deploy', requestedCommit: current, branchCommit: newer }), /Stale/)
-  assert.doesNotThrow(() => assertPromotion({ mode: 'recover', requestedCommit: current, branchCommit: current, liveIdentity: `${newer}:123:1`, expectedCurrent: `${newer}:123:1` }))
-  assert.throws(() => assertPromotion({ mode: 'recover', requestedCommit: current, branchCommit: current, liveIdentity: `${newer}:123:1`, expectedCurrent: `${current}:123:1` }), /Recovery refused/)
-  assert.throws(() => assertPromotion({ mode: 'recover', requestedCommit: current, branchCommit: current, liveIdentity: `${current}:123:2`, expectedCurrent: `${current}:123:1` }), /Recovery refused/)
-  assert.throws(() => assertPromotion({ mode: 'recover', requestedCommit: current, branchCommit: current, liveIdentity: `${current}:124:1`, expectedCurrent: `${current}:123:1` }), /Recovery refused/)
+  const before = currentFingerprint({ commit: current, runId: '123', runAttempt: '1' }, { head_sha: current, run_attempt: 1, status: 'completed', conclusion: 'failure' })
+  // An accepted retry can reuse identical release.json bytes. The producer state must fence it.
+  const acceptedRetry = currentFingerprint({ commit: current, runId: '123', runAttempt: '1' }, { head_sha: current, run_attempt: 2, status: 'completed', conclusion: 'success' })
+  const newRun = currentFingerprint({ commit: current, runId: '124', runAttempt: '1' }, { head_sha: current, run_attempt: 1, status: 'completed', conclusion: 'success' })
+  assert.notEqual(before, acceptedRetry)
+  assert.doesNotThrow(() => assertPromotion({ mode: 'recover', requestedCommit: current, branchCommit: current, liveIdentity: before, expectedCurrent: before }))
+  for (const identity of [acceptedRetry, newRun]) assert.throws(() => assertPromotion({ mode: 'recover', requestedCommit: current, branchCommit: current, liveIdentity: identity, expectedCurrent: before }), /Recovery refused/)
   assert.throws(() => assertPromotion({ mode: 'recover', requestedCommit: current, branchCommit: current }), /Recovery refused/)
 })

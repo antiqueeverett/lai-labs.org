@@ -34,7 +34,7 @@ export function assertManifest(manifest, files) {
 
 export function assertPromotion({ mode, requestedCommit, branchCommit, liveIdentity, expectedCurrent }) {
   if (requestedCommit !== branchCommit) throw new Error('Stale workflow: deployment branch has advanced')
-  if (mode === 'recover' && (!/^[a-f0-9]{40}:\d+:\d+$/.test(expectedCurrent || '') || liveIdentity !== expectedCurrent)) {
+  if (mode === 'recover' && (!/^[a-f0-9]{64}$/.test(expectedCurrent || '') || liveIdentity !== expectedCurrent)) {
     throw new Error('Recovery refused: current live release does not match expected_current')
   }
 }
@@ -43,6 +43,19 @@ async function getJson(url, headers = {}) {
   const response = await fetch(url, { headers, signal: AbortSignal.timeout(30_000), cache: 'no-store' })
   if (!response.ok) throw new Error(`${response.status} ${url}`)
   return response.json()
+}
+
+export function currentFingerprint(live, run) {
+  if (!/^\d+$/.test(live.runId) || run.head_sha !== live.commit) throw new Error('Live producer identity is inconsistent')
+  // Rerun-failed-jobs can reuse unchanged artifact bytes while changing acceptance state.
+  return sha256(JSON.stringify({ live, producerAttempt: run.run_attempt, producerStatus: run.status, producerConclusion: run.conclusion }))
+}
+
+async function currentIdentity(headers) {
+  const live = await getJson(`${policy.publicUrl}/release.json?guard=${Date.now()}`)
+  if (!/^\d+$/.test(live.runId)) throw new Error('Live release has no valid producer workflow')
+  const run = await getJson(`https://api.github.com/repos/${policy.repository}/actions/runs/${live.runId}`, headers)
+  return currentFingerprint(live, run)
 }
 
 export async function verifyLive(base, manifest, expectedOrigin = policy.canonicalUrl) {
@@ -93,14 +106,16 @@ async function main() {
     await verifyLive(argument || policy.publicUrl, manifest)
     await writeFile('live-verification.json', JSON.stringify({ schema: 1, commit: manifest.commit, contentDigest: manifest.contentDigest,
       checkedAt: new Date().toISOString(), publicUrl: policy.publicUrl, result: 'pass' }, null, 2) + '\n')
+  } else if (command === 'current') {
+    console.log(await currentIdentity(process.env.GH_TOKEN ? { Authorization: `Bearer ${process.env.GH_TOKEN}` } : {}))
   } else if (command === 'guard') {
     if (process.env.GITHUB_REF !== `refs/heads/${policy.branch}`) throw new Error('Only the deployment branch may publish')
     const headers = { Authorization: `Bearer ${process.env.GH_TOKEN}`, Accept: 'application/vnd.github+json' }
     const branch = await getJson(`https://api.github.com/repos/${policy.repository}/branches/${policy.branch}`, headers)
     const mode = process.env.RELEASE_MODE || 'deploy'
-    const live = mode === 'recover' ? await getJson(`${policy.publicUrl}/release.json?guard=${Date.now()}`) : null
+    const liveIdentity = mode === 'recover' ? await currentIdentity(headers) : undefined
     assertPromotion({ mode, requestedCommit: process.env.GITHUB_SHA, branchCommit: branch.commit.sha,
-      liveIdentity: live ? `${live.commit}:${live.runId}:${live.runAttempt}` : undefined, expectedCurrent: process.env.EXPECTED_CURRENT })
+      liveIdentity, expectedCurrent: process.env.EXPECTED_CURRENT })
   } else throw new Error(`Unknown release command: ${command}`)
 }
 if (process.argv[1] && import.meta.url === pathToFileURL(resolve(process.argv[1])).href) {
