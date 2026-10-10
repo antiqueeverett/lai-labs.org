@@ -12,3 +12,9 @@ pnpm-debug.log*
 *.tsbuildinfo
 playwright-report/
 test-results/
+release-manifest.json
+live-verification.json
+release-bundle.tar
+release-bundle.sha256
+acceptance.json
+.release/

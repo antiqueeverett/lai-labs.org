@@ -2,63 +2,234 @@ name: Deploy GitHub Pages
 
 on:
   push:
-    branches:
-      - main
-      - nightly
+    branches: [nightly]
+  pull_request:
+    branches: [nightly]
   workflow_dispatch:
+    inputs:
+      recovery_release:
+        description: 'Optional published production release tag to restore without rebuilding'
+        type: string
+        default: ''
+      expected_current:
+        description: 'Recovery only: commit:runId:runAttempt currently served in /release.json'
+        type: string
+        default: ''
 
 permissions:
   contents: read
-  pages: write
-  id-token: write
 
+# Publication, live verification and recovery share one lock. PR validation is separate.
 concurrency:
-  group: pages
+  group: ${{ github.event_name == 'pull_request' && format('pages-pr-{0}', github.event.number) || 'pages' }}
   cancel-in-progress: false
+
+env:
+  RELEASE_MODE: ${{ inputs.recovery_release && 'recover' || 'deploy' }}
+  RECOVERY_RELEASE: ${{ inputs.recovery_release }}
+  EXPECTED_CURRENT: ${{ inputs.expected_current }}
 
 jobs:
   build:
-    runs-on: ubuntu-latest
+    name: Build and verify
+    runs-on: ubuntu-24.04
+    timeout-minutes: 15
     steps:
-      - name: Checkout
-        uses: actions/checkout@v4
-
-      - name: Setup Node
-        uses: actions/setup-node@v4
+      - uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262 # v4
+      - uses: actions/setup-node@49933ea5288caeca8642d1e84afbd3f7d6820020 # v4
         with:
-          node-version: 22
+          node-version: 24.11.1
           cache: npm
-
-      - name: Install dependencies
+      - name: Install locked dependencies
+        if: env.RELEASE_MODE == 'deploy'
         run: npm ci
-
       - name: Check types and lint
+        if: env.RELEASE_MODE == 'deploy'
         run: npm run typecheck && npm run lint
-
-      - name: Build
+      - name: Build once
+        if: env.RELEASE_MODE == 'deploy'
         run: npm run build
-
-      - name: Test production output
-        run: npm test
-
-      - name: Install browser
-        run: npx playwright install --with-deps chromium
-
-      - name: Test browser behavior
-        run: npm run test:e2e
-
-      - name: Upload GitHub Pages artifact
-        uses: actions/upload-pages-artifact@v3
+      - name: Test production and release contracts
+        if: env.RELEASE_MODE == 'deploy'
+        run: npm test && npm run release:verify
+      - name: Install test browsers
+        if: env.RELEASE_MODE == 'deploy'
+        run: npx playwright install --with-deps chromium webkit
+      - name: Browser acceptance on Linux Chromium and WebKit
+        if: env.RELEASE_MODE == 'deploy'
+        run: npm run test:e2e -- --grep-invert @visual
+      - name: Restore previously accepted bytes
+        if: env.RELEASE_MODE == 'recover'
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: node scripts/archive.mjs recover
+      - name: Retain browser evidence on success or failure
+        if: always() && env.RELEASE_MODE == 'deploy'
+        uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02 # v4
+        with:
+          name: browser-evidence-${{ github.run_attempt }}
+          path: test-results/
+          retention-days: 90
+          if-no-files-found: warn
+      - name: Retain manifest
+        uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02 # v4
+        with:
+          name: release-manifest
+          path: release-manifest.json
+          retention-days: 90
+          if-no-files-found: error
+      - name: Upload tested Pages output
+        uses: actions/upload-pages-artifact@56afc609e74202658d3ffba0e8f6dda462b719fa # v3
         with:
           path: dist
+          retention-days: 90
+
+  visual:
+    name: Reviewed visual comparisons
+    needs: build
+    if: inputs.recovery_release == ''
+    runs-on: windows-2022
+    timeout-minutes: 15
+    steps:
+      - uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262 # v4
+      - uses: actions/setup-node@49933ea5288caeca8642d1e84afbd3f7d6820020 # v4
+        with:
+          node-version: 24.11.1
+          cache: npm
+      - uses: actions/download-artifact@d3f86a106a0bac45b974a628896c90dbdf5c8093 # v4
+        with:
+          name: github-pages
+          path: .release/pages
+      - name: Test exact artifact against reviewed Windows baselines
+        shell: pwsh
+        run: |
+          New-Item -ItemType Directory dist | Out-Null
+          tar -xf .release/pages/artifact.tar -C dist
+          if ($LASTEXITCODE) { exit $LASTEXITCODE }
+          npm ci
+          if ($LASTEXITCODE) { exit $LASTEXITCODE }
+          npx playwright install chromium webkit
+          if ($LASTEXITCODE) { exit $LASTEXITCODE }
+          npm run test:e2e -- --grep @visual
+          exit $LASTEXITCODE
+      - uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02 # v4
+        if: always()
+        with:
+          name: visual-evidence-${{ github.run_attempt }}
+          path: test-results/
+          retention-days: 90
+
+  archive:
+    name: Preserve recovery artifacts
+    if: always() && needs.build.result == 'success' && (needs.visual.result == 'success' || inputs.recovery_release != '') && github.event_name != 'pull_request' && github.ref == 'refs/heads/nightly'
+    needs: [build, visual]
+    runs-on: ubuntu-24.04
+    timeout-minutes: 10
+    permissions:
+      contents: write
+      actions: read
+    outputs:
+      release_id: ${{ steps.candidate.outputs.release_id }}
+    steps:
+      - uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262 # v4
+      - uses: actions/setup-node@49933ea5288caeca8642d1e84afbd3f7d6820020 # v4
+        with:
+          node-version: 24.11.1
+      - uses: actions/download-artifact@d3f86a106a0bac45b974a628896c90dbdf5c8093 # v4
+        with:
+          name: github-pages
+          path: .release/pages
+      - uses: actions/download-artifact@d3f86a106a0bac45b974a628896c90dbdf5c8093 # v4
+        with:
+          name: release-manifest
+      - name: Preserve original launch before first replacement
+        if: env.RELEASE_MODE == 'deploy'
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: node scripts/archive.mjs bootstrap
+      - name: Archive tested candidate before deployment
+        id: candidate
+        if: env.RELEASE_MODE == 'deploy'
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          mkdir dist
+          tar -xf .release/pages/artifact.tar -C dist
+          node scripts/archive.mjs prepare
 
   deploy:
-    needs: build
-    runs-on: ubuntu-latest
+    name: Deploy and verify public website
+    if: always() && needs.build.result == 'success' && needs.archive.result == 'success'
+    needs: [build, archive]
+    runs-on: ubuntu-24.04
+    timeout-minutes: 20
+    permissions:
+      contents: read
+      pages: write
+      id-token: write
     environment:
       name: github-pages
       url: ${{ steps.deployment.outputs.page_url }}
     steps:
-      - name: Deploy GitHub Pages
+      - uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262 # v4
+      - uses: actions/setup-node@49933ea5288caeca8642d1e84afbd3f7d6820020 # v4
+        with:
+          node-version: 24.11.1
+          cache: npm
+      - uses: actions/download-artifact@d3f86a106a0bac45b974a628896c90dbdf5c8093 # v4
+        with:
+          name: release-manifest
+      - name: Reject stale publication or recovery
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: node scripts/release.mjs guard
+      - name: Deploy tested artifact
         id: deployment
-        uses: actions/deploy-pages@v4
+        uses: actions/deploy-pages@d6db90164ac5ed86f2b6aed7e0febac5b3c0c03e # v4
+      - name: Verify live identity, all artifact files, routes and redirects
+        run: |
+          for attempt in 1 2 3; do
+            if node scripts/release.mjs verify-live; then exit 0; fi
+            if [ "$attempt" != 3 ]; then sleep 20; fi
+          done
+          exit 1
+      - name: Install locked live-test dependencies
+        if: env.RELEASE_MODE == 'deploy'
+        run: npm ci && npx playwright install --with-deps chromium webkit
+      - name: Verify live browser behavior
+        if: env.RELEASE_MODE == 'deploy'
+        env:
+          SITE_URL: https://www.lai-labs.org
+        run: npm run test:e2e -- --grep-invert @visual
+      - name: Retain public verification evidence
+        if: always()
+        uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02 # v4
+        with:
+          name: live-evidence-${{ github.run_attempt }}
+          path: |
+            live-verification.json
+            test-results/
+          retention-days: 90
+          if-no-files-found: warn
+
+  accept:
+    name: Record accepted release
+    if: needs.deploy.result == 'success' && github.event_name != 'pull_request' && !inputs.recovery_release
+    needs: [archive, deploy]
+    runs-on: ubuntu-24.04
+    timeout-minutes: 5
+    permissions:
+      contents: write
+    steps:
+      - uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262 # v4
+      - uses: actions/setup-node@49933ea5288caeca8642d1e84afbd3f7d6820020 # v4
+        with:
+          node-version: 24.11.1
+      - uses: actions/download-artifact@d3f86a106a0bac45b974a628896c90dbdf5c8093 # v4
+        with:
+          name: live-evidence-${{ github.run_attempt }}
+      - name: Publish acceptance only after live checks pass
+        env:
+          GH_TOKEN: ${{ github.token }}
+          RELEASE_ID: ${{ needs.archive.outputs.release_id }}
+        run: node scripts/archive.mjs accept

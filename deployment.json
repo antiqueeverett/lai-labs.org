@@ -1,0 +1,11 @@
+{
+  "repository": "antiqueeverett/lai-labs.org",
+  "branch": "nightly",
+  "environment": "github-pages",
+  "publicUrl": "https://www.lai-labs.org",
+  "canonicalUrl": "https://lai-labs.org",
+  "sourceCommit": "e7629f5741ba7a9d21b6a1ea34dc22c71a6da6b7",
+  "routes": ["/", "/solutions/", "/industries/", "/impact/", "/partnerships/", "/about/", "/contact/"],
+  "bookingEnabled": false,
+  "evidenceRetentionDays": 90
+}

@@ -8,7 +8,7 @@ const read = path => readFileSync(resolve('dist', path), 'utf8')
 test('all seven public pages have deployable HTML and the correct canonical domain', () => {
   for (const route of ['', 'solutions/', 'industries/', 'impact/', 'partnerships/', 'about/', 'contact/']) {
     const html = read(`${route}index.html`)
-    assert.ok(html.includes(`rel="canonical" href="https://www.lai-labs.org/${route}"`))
+    assert.ok(html.includes(`rel="canonical" href="https://lai-labs.org/${route}"`))
     for (const [, url] of html.matchAll(/(?:src|href)="(\/[^"#?]+)"/g)) {
       assert.ok(existsSync(resolve('dist', `.${url}`)), `Missing built asset ${url}`)
     }

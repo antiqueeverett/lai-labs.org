@@ -1,17 +1,35 @@
 import { test, expect, type Page } from '@playwright/test'
 
-const routes = ['/', '/solutions/', '/industries/', '/impact/', '/partnerships/', '/about/', '/contact/']
+// Independent user-facing expectations: do not derive these from App or the route generator.
+const routes = [
+  ['/', 'From problem definition to controlled production', 'Performance and limits evaluated in context.'],
+  ['/solutions/', 'Handover begins at design', 'Independent operation is planned from the start'],
+  ['/industries/', 'The application sets the technical path', 'The benchmark comes before the model'],
+  ['/impact/', 'We measure success by what', 'institutions can do without us'],
+  ['/partnerships/', 'Engagement models for', 'long-term collaboration'],
+  ['/about/', 'People before abstractions', 'One technical standard across different contexts'],
+  ['/contact/', 'Clarify the objective', 'Align on what comes next'],
+] as const
 
-for (const route of routes) {
+async function expectRouteContent(page: Page, title: string, subtitle: string) {
+  const heading = page.getByRole('heading', { level: 1 })
+  await expect(heading).toHaveCount(1)
+  await expect(heading).toBeVisible()
+  await expect(heading).toContainText(title)
+  await expect(heading).toContainText(subtitle)
+}
+
+for (const [route, title, subtitle] of routes) {
   test(`direct route, assets, layout and refresh: ${route}`, async ({ page }, testInfo) => {
     const errors: string[] = []
+    page.on('requestfailed', request => errors.push(`${request.failure()?.errorText} ${request.url()}`))
     page.on('pageerror', error => errors.push(error.message))
     page.on('console', message => { if (message.type() === 'error') errors.push(message.text()) })
     page.on('response', response => { if (response.status() >= 400) errors.push(`${response.status()} ${response.url()}`) })
     const response = await page.goto(route)
     expect(response?.status()).toBe(200)
     await expect(page.locator('main')).toBeVisible()
-    await expect(page.locator('main')).not.toBeEmpty()
+    await expectRouteContent(page, title, subtitle)
     await page.evaluate(async () => {
       for (const image of Array.from(document.images)) {
         image.loading = 'eager'
@@ -29,10 +47,16 @@ for (const route of routes) {
     expect(await page.evaluate(() => document.documentElement.scrollWidth <= innerWidth + 1)).toBe(true)
     await page.screenshot({ path: testInfo.outputPath(`${route.replaceAll('/', '') || 'home'}.png`), fullPage: true })
     expect((await page.reload())?.status()).toBe(200)
+    await expectRouteContent(page, title, subtitle)
     await expect(page.locator('footer')).toBeAttached()
     expect(errors).toEqual([])
   })
 }
+
+test('unknown document returns a real HTTP 404', async ({ request }) => {
+  const response = await request.get('/deployment-check-missing-page/')
+  expect(response.status()).toBe(404)
+})
 
 test('navigation, mobile menu, footer home link and browser history', async ({ page, isMobile }) => {
   await page.goto('/')
@@ -89,7 +113,7 @@ async function openContact(page: Page, intent = 'Build AI') {
   await page.getByRole('textbox', { name: 'Email', exact: true }).fill('deployment-test@example.com')
 }
 
-test('email integration success and failure without sending real messages', async ({ page }) => {
+test('intercepted email UI success and failure (provider delivery is not tested)', async ({ page }) => {
   let status = 500
   let payload = ''
   await page.route('https://formspree.io/f/xeebypqv', async route => {
