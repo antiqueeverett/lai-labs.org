@@ -1,0 +1,375 @@
+/* ============================================================
+   LAI Labs — Design System
+   Tokens, reset, primitives, and global utilities.
+   Component-specific styles live in src/styles/components.css
+   ============================================================ */
+@import './components.css';
+
+:root {
+  /* --- Brand palette: near-black institutional (Palantir-grade) --- */
+  --navy-950: #04060c;
+  --navy-900: #06080f;
+  --navy-850: #090c16;
+  --navy-800: #0e1320;
+
+  --ink-100: #f5f7fb; /* near-white text */
+  --ink-300: #c3cad8; /* muted text */
+  --ink-400: #9aa4b8; /* dim text */
+  --ink-500: #6b7689; /* faint text */
+
+  --brand: #1B76BC; /* authoritative Label AI logo blue */
+  --brand-rgb: 27, 118, 188;
+  --blue: #2f8fe6; /* brightened brand blue for dark UI */
+  --blue-bright: #5aa9f2;
+  --cyan: #22d3ee;
+  --danger: #f18a8a; /* form/validation error text */
+
+  /* Operating-model learning/assurance signal. This is intentionally distinct
+     from --danger: it is a peer process color, not an error/status semantic. */
+  --signal-learning: #E56B6F;
+  --signal-learning-rgb: 229, 107, 111;
+
+  --white: #ffffff;
+
+  /* --- Semantic --- */
+  --bg: var(--navy-900);
+  --bg-alt: var(--navy-850);
+  --surface: rgba(255, 255, 255, 0.022);
+  --surface-2: rgba(255, 255, 255, 0.045);
+  --border: rgba(255, 255, 255, 0.07);
+  --border-strong: rgba(255, 255, 255, 0.13);
+  --text: var(--ink-100);
+  --text-muted: var(--ink-300);
+  --text-dim: var(--ink-400);
+
+  --gradient-brand: linear-gradient(135deg, var(--brand) 0%, var(--blue) 50%, var(--cyan) 100%);
+  --gradient-text: linear-gradient(135deg, #ffffff 0%, #d4eaff 40%, #7ecbf5 100%);
+  --gradient-surface: linear-gradient(160deg, rgba(255,255,255,0.06) 0%, rgba(255,255,255,0.02) 100%);
+  --glow: radial-gradient(60% 55% at 50% 0%, rgba(30, 119, 188, 0.16) 0%, rgba(34, 211, 238, 0.04) 45%, transparent 75%);
+  /* full-bleed satellite cover tint — keeps imagery cinematic + text legible */
+  --cover-tint: linear-gradient(180deg, rgba(4,6,12,0.62) 0%, rgba(4,6,12,0.78) 55%, rgba(6,8,15,0.96) 100%);
+  --cover-tint-side: linear-gradient(100deg, rgba(4,6,12,0.92) 0%, rgba(4,6,12,0.6) 45%, rgba(4,6,12,0.35) 100%);
+
+  /* --- Type families and supported weights ---
+     Only the weights actually loaded in index.html are declared here:
+     Inter 400/500/600/700 and Space Grotesk 500/600/700. Never use a value
+     outside this set — the browser would synthesize it. */
+  --font-sans: 'Inter', system-ui, -apple-system, 'Segoe UI', Roboto, sans-serif;
+  --font-display: 'Space Grotesk', var(--font-sans);
+  --font-weight-regular: 400;
+  --font-weight-medium: 500;
+  --font-weight-semibold: 600;
+  --font-weight-bold: 700;
+
+  /* --- Semantic type ladder ---
+     Rank is semantic, never page-specific. Expressive display roles and
+     productive interface roles share this one bounded system. */
+  --type-brand-statement: clamp(1.25rem, 1.8vw, 1.75rem);
+  --type-display-hero: clamp(1.875rem, 4.6vw, 3.75rem);
+  --type-display-page: clamp(2rem, 3.8vw, 3rem);
+  --type-display-editorial: clamp(2rem, 3.2vw, 2.625rem);
+  --type-display-section: clamp(1.75rem, 2.8vw, 2.25rem);
+  --type-panel-heading: 1.75rem;
+  --type-heading: clamp(1.5rem, 2.1vw, 2rem);
+  --type-control-prominent: 1.5rem;
+  --type-lead: 1.25rem;
+  --type-body: 1rem;
+  --type-supporting: 0.875rem;
+  --type-micro: 0.8125rem;
+  --leading-display: 1.04;
+  --leading-heading: 1.16;
+  --leading-body: 1.62;
+  --tracking-display: -0.035em;
+  --tracking-heading: -0.025em;
+  --measure-body: 64ch;
+
+  /* --- Spacing rhythm --- */
+  --space-2: 0.5rem;
+  --space-3: 0.75rem;
+  --space-4: 1rem;
+
+  /* --- Shared interaction, tab, and icon roles --- */
+  --focus-ring: var(--blue-bright);
+  --focus-ring-width: 2px;
+  --focus-ring-offset: 3px;
+  --interactive-accent: var(--brand);
+  --interactive-accent-soft: rgba(var(--brand-rgb), 0.12);
+  --interactive-accent-border: rgba(var(--brand-rgb), 0.42);
+  --tab-text: var(--text-dim);
+  --tab-text-hover: var(--text);
+  --tab-bg: transparent;
+  --tab-bg-hover: var(--surface-2);
+  --tab-selected-bg: var(--interactive-accent-soft);
+  --tab-selected-text: var(--text);
+  --tab-selected-border: var(--interactive-accent);
+  --tab-min-height: 3.25rem;
+  --icon-frame-size: 2.625rem;
+  /* Glyph is sized in rem alongside the frame so the two scale together under
+     enlarged text; framed icons therefore share one optical size. */
+  --icon-glyph-size: 1.375rem;
+  --icon-frame-radius: 999px;
+  --icon-color: var(--blue-bright);
+  --icon-surface: var(--interactive-accent-soft);
+  --icon-border: var(--interactive-accent-border);
+
+  /* --- Diagram role (narrowly scoped, geometry-coupled) ---
+     DELIBERATE EXCEPTION to the interface type ladder. These sizes are tied to
+     the absolute percentage geometry of the operating-model composition: node
+     boxes are shrink-to-fit and the SVG wires meet them at fixed viewBox
+     coordinates. Changing a value here requires re-checking node widths, wire
+     endpoints, inter-node clearance, and the 320px case. */
+  --diagram-node-title: clamp(1.125rem, 1.45vw, 1.25rem);
+  --diagram-node-meta: clamp(0.875rem, 1vw, 1rem);
+  --diagram-wire: rgba(255, 255, 255, 0.1);
+  --diagram-wire-active: rgba(105, 183, 255, 0.55);
+  --diagram-node-border: rgba(255, 255, 255, 0.17);
+
+  /* --- Radius / shadow --- */
+  --r-sm: 10px;
+  --r-md: 14px;
+  --r-lg: 20px;
+  --r-xl: 28px;
+  --shadow-md: 0 8px 32px -8px rgba(0, 0, 0, 0.55);
+  --shadow-lg: 0 24px 64px -16px rgba(0, 0, 0, 0.6);
+  --shadow-card: 0 1px 0 rgba(255, 255, 255, 0.04) inset, 0 8px 32px -8px rgba(0, 0, 0, 0.4);
+
+  /* --- Layout --- */
+  --maxw: 1180px;
+  --gutter: clamp(1.1rem, 4vw, 2.5rem);
+  --section-y: clamp(4.5rem, 9vw, 8rem);
+}
+
+@media (max-width: 880px) {
+  :root {
+    --type-panel-heading: 1.5rem;
+    --type-control-prominent: 1.25rem;
+  }
+}
+
+/* --- Reset --- */
+*,
+*::before,
+*::after {
+  box-sizing: border-box;
+}
+* {
+  margin: 0;
+}
+html {
+  scroll-behavior: smooth;
+  -webkit-text-size-adjust: 100%;
+}
+body {
+  font-family: var(--font-sans);
+  background: var(--bg);
+  color: var(--text);
+  line-height: 1.6;
+  font-size: 16px;
+  -webkit-font-smoothing: antialiased;
+  text-rendering: optimizeLegibility;
+  overflow-x: hidden;
+}
+img,
+svg,
+video {
+  display: block;
+  max-width: 100%;
+}
+a {
+  color: inherit;
+  text-decoration: none;
+}
+button {
+  font: inherit;
+  cursor: pointer;
+}
+ul {
+  list-style: none;
+  padding: 0;
+}
+h1,
+h2,
+h3,
+h4 {
+  font-family: var(--font-display);
+  font-weight: var(--font-weight-semibold);
+  line-height: var(--leading-heading);
+  letter-spacing: var(--tracking-heading);
+  text-wrap: balance;
+  /* Display sizes are set in `rem`, so a user's enlarged text can make a single
+     long word wider than the column. Breaking it is the last resort that keeps
+     the page off a horizontal scrollbar; it never engages while the word fits. */
+  overflow-wrap: break-word;
+}
+:focus-visible {
+  outline: var(--focus-ring-width) solid var(--focus-ring);
+  outline-offset: var(--focus-ring-offset);
+  border-radius: 4px;
+}
+
+@media (prefers-reduced-motion: reduce) {
+  html {
+    scroll-behavior: auto;
+  }
+  *,
+  *::before,
+  *::after {
+    animation-duration: 0.001ms !important;
+    animation-iteration-count: 1 !important;
+    transition-duration: 0.001ms !important;
+  }
+}
+
+/* --- Layout primitives --- */
+.container {
+  width: 100%;
+  max-width: var(--maxw);
+  margin-inline: auto;
+  padding-inline: var(--gutter);
+}
+.section {
+  padding-block: var(--section-y);
+  position: relative;
+}
+.skip-link {
+  position: absolute;
+  left: -999px;
+  top: 0;
+  z-index: 200;
+  background: var(--blue);
+  color: #fff;
+  padding: 0.7rem 1rem;
+  border-radius: 0 0 var(--r-sm) 0;
+}
+.skip-link:focus {
+  left: 0;
+}
+
+/* --- Typographic helpers --- */
+/* Real text that only the accessibility tree needs — used where a decorative
+   or animated presentation cannot itself carry the wording. */
+.visually-hidden {
+  position: absolute;
+  width: 1px;
+  height: 1px;
+  margin: -1px;
+  padding: 0;
+  border: 0;
+  overflow: hidden;
+  clip-path: inset(50%);
+  white-space: nowrap;
+}
+.section-head {
+  max-width: 640px;
+  margin-bottom: clamp(2rem, 4vw, 3.25rem);
+}
+.section-head.center {
+  margin-inline: auto;
+  text-align: center;
+}
+.section-title {
+  font-size: var(--type-display-section);
+  margin-top: 0.9rem;
+}
+.section-sub {
+  color: var(--text-muted);
+  font-size: var(--type-lead);
+  line-height: var(--leading-body);
+  margin-top: var(--space-4);
+}
+.text-gradient {
+  background: var(--gradient-text);
+  -webkit-background-clip: text;
+  background-clip: text;
+  color: transparent;
+}
+
+/* --- Buttons --- */
+.btn {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  gap: 0.55rem;
+  font-family: var(--font-display);
+  font-weight: var(--font-weight-semibold);
+  font-size: var(--type-supporting);
+  padding: 0.85rem 1.5rem;
+  border-radius: var(--r-sm);
+  border: 1px solid transparent;
+  transition: transform 0.18s ease, box-shadow 0.25s ease, background 0.25s ease, border-color 0.25s ease;
+  white-space: nowrap;
+}
+.btn:hover {
+  transform: translateY(-2px);
+}
+.btn:active {
+  transform: translateY(0) scale(0.97);
+}
+.btn:disabled {
+  opacity: 0.65;
+  cursor: not-allowed;
+  transform: none;
+}
+.btn-primary {
+  background: var(--brand);
+  color: #fff;
+  box-shadow: 0 12px 36px -16px rgba(var(--brand-rgb), 0.72);
+  position: relative;
+  overflow: hidden;
+}
+.btn-primary:hover {
+  background: var(--brand);
+  box-shadow: 0 0 0 1px rgba(var(--brand-rgb), 0.48), 0 20px 52px -14px rgba(var(--brand-rgb), 0.62);
+}
+.btn-ghost {
+  background: var(--surface-2);
+  border-color: var(--border-strong);
+  color: var(--text);
+  backdrop-filter: blur(8px);
+}
+.btn-ghost:hover {
+  border-color: var(--blue);
+  background: rgba(47, 143, 230, 0.1);
+}
+.btn-arrow {
+  transition: transform 0.18s ease;
+}
+.btn:hover .btn-arrow {
+  transform: translateX(3px);
+}
+
+/* --- Cards (shared) --- */
+.card {
+  position: relative;
+  background: var(--gradient-surface);
+  border: 1px solid var(--border);
+  border-radius: var(--r-lg);
+  padding: clamp(1.4rem, 2.5vw, 1.9rem);
+  transition: transform 0.3s cubic-bezier(0.21,0.5,0.27,1), border-color 0.3s ease, background 0.3s ease, box-shadow 0.3s ease;
+  overflow: hidden;
+  box-shadow: var(--shadow-card);
+  backdrop-filter: blur(8px);
+}
+.card::before {
+  content: '';
+  position: absolute;
+  inset: 0;
+  border-radius: inherit;
+  padding: 1px;
+  background: var(--gradient-brand);
+  -webkit-mask: linear-gradient(#000 0 0) content-box, linear-gradient(#000 0 0);
+  -webkit-mask-composite: xor;
+  mask-composite: exclude;
+  opacity: 0;
+  transition: opacity 0.3s ease;
+  pointer-events: none;
+}
+.card:hover {
+  transform: translateY(-4px);
+  background: var(--surface-2);
+  box-shadow: var(--shadow-md);
+  border-color: var(--border-strong);
+}
+.card:hover::before {
+  opacity: 0.5;
+}

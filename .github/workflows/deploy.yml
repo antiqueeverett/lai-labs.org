@@ -30,10 +30,22 @@ jobs:
           cache: npm
 
       - name: Install dependencies
-        run: npm install
+        run: npm ci
+
+      - name: Check types and lint
+        run: npm run typecheck && npm run lint
 
       - name: Build
         run: npm run build
+
+      - name: Test production output
+        run: npm test
+
+      - name: Install browser
+        run: npx playwright install --with-deps chromium
+
+      - name: Test browser behavior
+        run: npm run test:e2e
 
       - name: Upload GitHub Pages artifact
         uses: actions/upload-pages-artifact@v3
